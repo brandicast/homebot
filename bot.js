@@ -43,6 +43,7 @@ bot.on('message', function (event) {
                     bubbles[1].body.contents[0].text = "I am bubble 2";
                     carousel.contents = bubbles;
                     logger.debug(JSON.stringify(response));
+                    event.reply(response);
                     break;
                 }
                 case "(SINGLE)": {
@@ -51,14 +52,17 @@ bot.on('message', function (event) {
                     bubble.body.contents[0].text = "I am bubble 1";
                     response.contents = bubble ;
                     logger.debug(JSON.stringify(response));
+                    event.reply(response);
                     break; 
                 }
                 case "(status)" : {
                     response = composer.getStatus();
+                    event.reply(response);
                     break;
                 }
                 case "(raw)" :{
                     response = composer.getRawData() ;
+                    event.reply(response);
                     break;
                 }
                 case "麵包 請幫忙開大門" :{
@@ -69,6 +73,7 @@ bot.on('message', function (event) {
                     var code = mqtt_agent.publish(config.mqtt.topic_for_pico, "OPEN")
                     if (code == 0) 
                         response.text = config.linebot.fail_to_open_front_door
+                    event.reply(response);
                     break;
                 }
                 case "麵包教我單字":{
@@ -113,6 +118,7 @@ bot.on('message', function (event) {
                     response.contents = bubble ;
 
                     //logger.debug(JSON.stringify(response));
+                    event.reply(response);
 
                     break ;
                 }
@@ -155,12 +161,40 @@ bot.on('message', function (event) {
                     response.contents = bubble ;
 
                     //logger.debug(JSON.stringify(response));
+                    event.reply(response);
 
                     break ;
                 }
                 default: {
-                    response =  Object.assign({}, message.text); 
-                    response.text =  event.message.text ;
+                    if (config.ai.enable)  {
+                        (async () => {
+                            try {
+                            const res = await fetch(config.ai.url + event.source.userId + "?" + new URLSearchParams({
+                                ask: text
+                            }).toString()) ;
+                            
+                            logger.debug (config.ai.url+ event.source.userId + "?" + new URLSearchParams({
+                                ask: text
+                            }).toString())
+
+                            reply = await res.text()
+                            response =  Object.assign({}, message.text); 
+                            response.text =  reply ;
+                            logger.debug(reply)
+                            event.reply(response);
+                            
+                            } catch (err) {
+                            logger.error(err.message); //can be console.error
+                            }
+                        })();
+                    }
+                    else  {
+                        response =  Object.assign({}, message.text); 
+                        response.text =  event.message.text ;
+                        event.reply(response);
+                    }
+
+                    
                     break;
                 }
             }
@@ -171,25 +205,27 @@ bot.on('message', function (event) {
             response = Object.assign({},  message.sticker); ;
             if (event.message.packageId == "1")
                 response.stickerId = event.message.stickerId;
+            event.reply(response);
             break;
         }
         case "location" :{
             response.text = event.message.address + " (" + event.message.latitude + "," + event.message.longitude + ")" ;
+            event.reply(response);
             break
         }
         case "image":  default : {
             response.text = config.linebot.service_not_support ;
+            event.reply(response);
             break ;
         }
     }
 
     //response["quickReply"] = message.quickReply ;
-    event.reply(response);
-
     log_msg = MEMBERS[event.source.userId]["displayName"] + " 說 " + event.message.text ;
     logger.info (log_msg) ;
-    mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg) ;
- 
+    if (config.mqtt.enable) 
+        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg) ;
+    
 });
 
 
@@ -262,7 +298,7 @@ function unregisterMember(userId) {
 setTimeout(function () {
     var sendMsg = config.linebot.service_is_up_string;
     if (Object.keys(MEMBERS).length > 0) {
-        bot.push(Object.keys(MEMBERS), sendMsg);
+        bot.broadcast( sendMsg);
         logger.info('send: ' + Object.keys(MEMBERS) + ':' + sendMsg);
     }
     else {

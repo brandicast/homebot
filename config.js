@@ -20,9 +20,9 @@ module.exports = {
         },
         linebot: {
                 configuration: {
-                        channelId: $ID,
-                        channelSecret: $SECRET,
-                        channelAccessToken: $TOKEN
+                        channelId: {$ID},
+                        channelSecret: {$SECRET},
+                        channelAccessToken: {$TOKEN}
                 }, 
                 port: 9111,
                 resource_folder: "./resources",
@@ -35,13 +35,17 @@ module.exports = {
                 fail_to_open_front_door: "麵包好像打不開了 !"
 
         },
-        mqtt: {
+        ai:{
                 enable: true,
+                url: 'http://127.0.0.1:8888/chat/id/'
+        },
+        mqtt: {
+                enable: false,
                 url: 'mqtt://192.168.68.57',
                 port: 1883,
                 topic_for_iot: 'brandon/iot/zwave/philio/event/#',
                 topic_for_pico: 'brandon/iot/pico/gate',
-                client_id: 'homebot'
+                client_id: 'homebot2'
         }, 
         eng: {
                 resource_folder: "./resources",
