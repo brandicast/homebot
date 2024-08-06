@@ -20,10 +20,10 @@ module.exports = {
         },
         linebot: {
                 configuration: {
-                        channelId: {$ID},
-                        channelSecret: {$SECRET},
-                        channelAccessToken: {$TOKEN}
-                }, 
+                        channelId: { $ID },
+                        channelSecret: { $SECRET },
+                        channelAccessToken: { $TOKEN }
+                },
                 port: 9111,
                 resource_folder: "./resources",
                 member_profile: "member.json",
@@ -35,7 +35,7 @@ module.exports = {
                 fail_to_open_front_door: "麵包好像打不開了 !"
 
         },
-        ai:{
+        ai: {
                 enable: true,
                 url: 'http://127.0.0.1:8888/chat/id/'
         },
@@ -45,8 +45,9 @@ module.exports = {
                 port: 1883,
                 topic_for_iot: 'brandon/iot/zwave/philio/event/#',
                 topic_for_pico: 'brandon/iot/pico/gate',
+                topic_for_homebot: 'brandon/bot/homebot',
                 client_id: 'homebot2'
-        }, 
+        },
         eng: {
                 resource_folder: "./resources",
                 basic: "ttc_1200.json",
