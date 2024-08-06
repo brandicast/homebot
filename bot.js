@@ -25,12 +25,10 @@ var MEMBERS = {};
 */
 bot.on('message', function (event) {
     var response; // get text json from template
+    logger.debug(event.message.type);
     switch (event.message.type) {
         case "text": {
             var text = event.message.text;
-            //logger.debug("TEXT = : " + text); 
-            //logger.debug(JSON.stringify(event)); 
-
             switch (text) {
                 case "(STATUS)": {
                     response = Object.assign({}, message.flex.common);
@@ -193,6 +191,14 @@ bot.on('message', function (event) {
                         response.text = event.message.text;
                         event.reply(response);
                     }
+                    //response["quickReply"] = message.quickReply ;
+                    id = event.source.userId;
+                    if (MEMBERS[id])
+                        id = MEMBERS[id]["displayName"]
+                    log_msg = id + " 說 " + event.message.text;
+                    logger.info(log_msg);
+                    if (config.mqtt.enable)
+                        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
 
 
                     break;
@@ -209,26 +215,20 @@ bot.on('message', function (event) {
             break;
         }
         case "location": {
+            response = Object.assign({}, message.text);;
             response.text = event.message.address + " (" + event.message.latitude + "," + event.message.longitude + ")";
             event.reply(response);
             break
         }
         case "image": default: {
-            response.text = config.linebot.service_not_support;
+            response = Object.assign({}, message.text);;
+            response.text = config.linebot.image_not_support;
             event.reply(response);
             break;
         }
     }
 
-    //response["quickReply"] = message.quickReply ;
-    id = event.source.userId;
-    if (MEMBERS[id])
-        id = MEMBERS[id]["displayName"]
-    log_msg = id + " 說 " + event.message.text;
-    logger.info(log_msg);
-    if (config.mqtt.enable)
-        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
-
+ 
 });
 
 
