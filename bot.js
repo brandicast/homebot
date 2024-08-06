@@ -112,6 +112,8 @@ bot.on('message', function (event) {
                     else
                         bubble.footer.contents[1].action.uri = config.eng.base_url + word[1].link;
 
+                    logger.debug (config.eng.base_url + "#" +word[1].link);
+
                     response = Object.assign({}, message.flex2.common);
                     response.contents = bubble;
 
@@ -152,8 +154,12 @@ bot.on('message', function (event) {
 
                     if ("None" == word[1].link)
                         delete bubble.footer;
-                    else
-                        bubble.footer.contents[1].action.uri = config.eng.base_url + word[1].link;
+                    else {
+                        bubble.footer.contents[1].action.uri = config.eng.base_url + "/" + word[1].link;
+                        logger.debug (config.eng.base_url + "#" +word[1].link) ;
+
+                    }
+                        
 
                     response = Object.assign({}, message.flex2.common);
                     response.contents = bubble;
