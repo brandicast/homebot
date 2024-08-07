@@ -9,11 +9,14 @@ let vocab_db = require("./vocab_manager.js");
 
 
 let linebot = require('linebot');
+let line_tools = require('./lib/line_tools.js');
 
 let composer = require("./line_message_formatter.js");
 let message = require("./lib/line_message_template.js");
 
 var mqtt_agent = require('./mqtt_agent.js');
+
+
 
 let bot = linebot(config.linebot.configuration);
 
@@ -171,6 +174,8 @@ bot.on('message', function (event) {
                 }
                 default: {
                     if (config.ai.enable) {
+                        line_tools.sendLoadingAnimation (event.source.userId ) ;
+
                         (async () => {
                             try {
                                 const res = await fetch(config.ai.url + event.source.userId + "?" + new URLSearchParams({
@@ -324,7 +329,7 @@ function unregisterMember(userId) {
 setTimeout(function () {
     var sendMsg = config.linebot.service_is_up_string;
     if (Object.keys(MEMBERS).length > 0) {
-        bot.broadcast(sendMsg);
+        //bot.broadcast(sendMsg);
         logger.info('send: ' + Object.keys(MEMBERS) + ':' + sendMsg);
     }
     else {
@@ -348,85 +353,3 @@ bot.listen('/', config.linebot.port);
 
 logger.info('Running on : ' + config.linebot.port);
 
-
-
-
-
-/*
-[Text]
-{
-  type: 'message',
-  message: {
-    type: 'text',
-    id: '14839608892725',
-    text: 'Hi',
-    content: [Function (anonymous)]
-  },
-  timestamp: 1633076934007,
-  source: {
-    type: 'user',
-    userId: 'U17f3c29570cb4be181aa7e82b86b3ba7',
-    profile: [Function (anonymous)],
-    member: [Function (anonymous)]
-  },
-  replyToken: 'c2d00beadb624f4ab48dcc8b6bd6a22c',
-  mode: 'active',
-  reply: [Function (anonymous)]
-}
-
-
-
-[Sticker]
-
- {
-  type: 'message',
-  message: {
-    type: 'sticker',
-    id: '14839571160316',
-    stickerId: '13',
-    packageId: '1',
-    stickerResourceType: 'STATIC',
-    keywords: [
-      'thumb',    'nice',
-      'thumbsup', 'good',
-      'moon',     'cool',
-      'OK',       'goodjob',
-      'Awesome'
-    ],
-    content: [Function (anonymous)]
-  },
-  timestamp: 1633076497146,
-  source: {
-    type: 'user',
-    userId: 'U17f3c29570cb4be181aa7e82b86b3ba7',
-    profile: [Function (anonymous)],
-    member: [Function (anonymous)]
-  },
-  replyToken: '7254a3d1a4c94a9e9df978744a920a8b',
-  mode: 'active',
-  reply: [Function (anonymous)]
-}
-
- [Image]
-
- { type: 'message',
-  message: {
-    type: 'image',
-    id: '14839575573040',
-    contentProvider: { type: 'line' },
-    content: [Function (anonymous)]
-  },
-  timestamp: 1633076548764,
-  source: {
-    type: 'user',
-    userId: 'U17f3c29570cb4be181aa7e82b86b3ba7',
-    profile: [Function (anonymous)],
-    member: [Function (anonymous)]
-  },
-  replyToken: '1c4cd9cf028a41c89029b9d247ce0b14',
-  mode: 'active',
-  reply: [Function (anonymous)]
-}
-
-
-*/
