@@ -37,15 +37,12 @@ if (config.mqtt.enable) {
         
         logger.debug("Publishing message to topic : " + mqtt_topic + " with content : " + content);
         var result = 1
-        /*
         client.publish(mqtt_topic, content,  (err) => {
             if (err) {
             result = 0
             } 
             //client.end()
         });
-        */
-
         return result;
     }
 
