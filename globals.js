@@ -82,10 +82,7 @@ module.exports = {
                     name: "Philio PST02-C Door/Window Contact Detector",
                     img: "https://images.squarespace-cdn.com/content/v1/5c1afbd1266c07479bc41525/1546915689112-6QJK5CDWKKM6KBGQMPNX/PST02-A%26C01.jpg?format=500w"
                 },
-                "01010003": {
-                    name: "Philio Scene Status",
-                    img: "https://www.z-wave.com/logo.svg"
-                },
+
                 "0101010F":{
                     name: "Philio PAN03 Switch Module",
                     img: "https://images.squarespace-cdn.com/content/v1/5c1afbd1266c07479bc41525/1547439735527-4B00C48V1A1KBR731WPX/PAN0302.jpg?format=500w"

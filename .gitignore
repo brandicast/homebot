@@ -131,3 +131,5 @@ dist
 
 config_private.js
 config_public.js
+
+sample/*

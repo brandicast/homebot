@@ -1,0 +1,20 @@
+services:
+  homebot:
+    build: .
+    container_name: homebot
+    restart: unless-stopped
+    ports:
+      - 9111:9111
+    env_file:
+      - .env
+    volumes:
+      - ./resources:/opt/homebot/resources
+      - ./logs:/opt/homebot/logs
+  nport:
+    build: 
+      context: ./nport
+      dockerfile: Dockerfile
+    container_name: nport
+    restart: unless-stopped
+    #network_mode: "service:homebot"
+    network_mode: host

@@ -1,355 +1,292 @@
+'use strict';
 
-let config = require("./config.js");
-const log4js = require("log4js");
+const config       = require('./config.js');
+const log4js       = require('log4js');
 log4js.configure(config.log4js_set);
 const logger = log4js.getLogger(__filename.slice(__dirname.length + 1));
 
-let member_manager = require("./bot_member_manager.js");
-let vocab_db = require("./vocab_manager.js");
+const member_manager = require('./bot_member_manager.js');
+const vocab_db       = require('./vocab_manager.js');
+const linebot        = require('linebot');
+const line_tools     = require('./lib/line_tools.js');
+const composer       = require('./line_message_formatter.js');
+const message        = require('./lib/line_message_template.js');
+const mqtt_agent     = require('./mqtt_agent.js');
 
+const bot = linebot(config.linebot.configuration);
 
-let linebot = require('linebot');
-let line_tools = require('./lib/line_tools.js');
+let MEMBERS = {};
 
-let composer = require("./line_message_formatter.js");
-let message = require("./lib/line_message_template.js");
+/**
+ * 將詞彙資料轉換成 Flex Bubble 元件
+ * @param {Array} word - [英文字, { chi, link }]
+ * @param {string} baseUrl - 題目連結的 base URL
+ */
+function buildWordBubble(word, baseUrl) {
+    const bubble = structuredClone(message.flex2.container.bubble);
+    bubble.header.contents[0].text = word[0];
+    delete bubble.hero; // 目前先不顯示圖片
 
-var mqtt_agent = require('./mqtt_agent.js');
+    const contentArray = String(word[1].chi)
+        .split('[')
+        .filter(el => el.length > 0)
+        .map(el => ({
+            type:  'text',
+            text:  el.indexOf(']') > 0 ? '[' + el : el,
+            size:  'lg',
+            align: 'start',
+            wrap:  true,
+        }));
 
+    bubble.body.contents = contentArray;
 
+    // 增加分類說明欄位
+    const catStr = word[1].category;
+    if (catStr && catStr.length === 3) {
+        let labels = [];
+        if (catStr[0] === '1') labels.push('高中學測單字');
+        if (catStr[1] === '1') labels.push('國中會考800挑戰單字');
+        if (catStr[2] === '1') labels.push('國中會考1200基礎單字');
+        
+        if (labels.length > 0) {
+            bubble.body.contents.push({
+                type: 'text',
+                text: '分類: ' + labels.join('、'),
+                size: 'xs',
+                color: '#888888',
+                wrap: true,
+                margin: 'md'
+            });
+        }
+    }
 
-let bot = linebot(config.linebot.configuration);
+    if (word[1].link === 'None') {
+        delete bubble.footer;
+    } else {
+        bubble.footer.contents[1].action.uri = baseUrl + word[1].link;
+    }
+    return bubble;
+}
 
-var MEMBERS = {};
+/**
+ * 取得目前成員的顯示名稱（若已知），否則回傳 userId
+ */
+function getMemberDisplay(userId) {
+    return (MEMBERS[userId] && MEMBERS[userId].displayName) ? MEMBERS[userId].displayName : userId;
+}
 
-/*  
-    Reference :  See sample message in the bottom
-  
-*/
+/**
+ * 記錄並發佈使用者訊息到 MQTT
+ */
+function logUserMessage(userId, text) {
+    const id      = getMemberDisplay(userId);
+    const log_msg = id + ' 說 ' + text;
+    logger.info(log_msg);
+    if (config.mqtt.enable)
+        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg).catch(err => logger.error(err));
+}
+
+/*
+ * 處理文字訊息
+ */
 bot.on('message', function (event) {
-    var response; // get text json from template
     logger.debug(event.message.type);
+
     switch (event.message.type) {
-        case "text": {
-            var text = event.message.text;
-            switch (text) {
-                case "(STATUS)": {
-                    response = Object.assign({}, message.flex.common);
-                    var carousel = Object.assign({}, message.flex.container.carousel);
-                    response.contents = carousel;
-                    var bubbles = [];
-                    bubbles[0] = Object.assign({}, message.flex.container.bubble);
-                    bubbles[1] = Object.assign({}, message.flex.container.bubble);
-                    bubbles[0].body.contents[0].text = "I am bubble 1";
-                    bubbles[1].body.contents[0].text = "I am bubble 2";
-                    carousel.contents = bubbles;
-                    logger.debug(JSON.stringify(response));
-                    event.reply(response);
-                    break;
-                }
-                case "(SINGLE)": {
-                    response = Object.assign({}, message.flex.common);
-                    var bubble = Object.assign({}, message.flex.container.bubble);
-                    bubble.body.contents[0].text = "I am bubble 1";
-                    response.contents = bubble;
-                    logger.debug(JSON.stringify(response));
-                    event.reply(response);
-                    break;
-                }
-                case "(status)": {
-                    response = composer.getStatus();
-                    event.reply(response);
-                    break;
-                }
-                case "(raw)": {
-                    response = composer.getRawData();
-                    event.reply(response);
-                    break;
-                }
-                case "麵包 請幫忙開大門": {
-
-                    response = Object.assign({}, message.text);
-                    response.text = config.linebot.try_to_open_front_door
-
-                    var code = mqtt_agent.publish(config.mqtt.topic_for_pico, "OPEN")
-                    if (code == 0)
-                        response.text = config.linebot.fail_to_open_front_door
-                    event.reply(response);
-                    break;
-                }
-                case "麵包教我單字": {
-                    var word = vocab_db.randomBasicWord();
-
-                    var bubble = Object.assign({}, message.flex2.container.bubble);
-                    bubble.header.contents[0].text = word[0];
-
-                    delete bubble.hero;   // No hero image for now 
-
-                    target = word[1].chi;
-                    //target = "[形容詞] 二的; [名詞] 二" ;
-                    //target = "[副詞] 只,僅僅,才;不料;反而;可是,不過;要不是,若非 ; [連接詞] 可是,不過;要不是,若非 ";
-                    //target = "哈哈"
-
-                    explain_array = String(target).split("[");  //  explain_array = String(target).split(/(\[)/g);  -> this returns delimiter as item
-
-                    content_array = [];
-
-                    explain_array.forEach(element => {
-                        if (element.length > 0) {
-                            item = {};
-                            item["type"] = "text";
-                            if (element.indexOf("]") > 0)
-                                element = "[" + element;
-                            item["text"] = element;
-                            item["size"] = "lg";
-                            item["align"] = "start";
-                            item["wrap"] = true;
-                            content_array.push(item);
-                        }
-                    });
-                    //bubble.body.contents[0].text = word[1].chi ;
-                    bubble.body.contents = content_array;
-
-                    if ("None" == word[1].link)
-                        delete bubble.footer;
-                    else
-                        bubble.footer.contents[1].action.uri = config.eng.base_url + word[1].link;
-
-                    logger.debug (config.eng.base_url + "#" +word[1].link);
-
-                    response = Object.assign({}, message.flex2.common);
-                    response.contents = bubble;
-
-                    //logger.debug(JSON.stringify(response));
-                    event.reply(response);
-
-                    break;
-                }
-                case "麵包教我難一點的單字": {
-                    var word = vocab_db.randomAdvanceWord();
-
-                    var bubble = Object.assign({}, message.flex2.container.bubble);
-                    bubble.header.contents[0].text = word[0];
-
-                    delete bubble.hero;   // No hero image for now 
-
-                    target = word[1].chi;
-
-                    explain_array = String(target).split("[");  //  explain_array = String(target).split(/(\[)/g);  -> this returns delimiter as item
-
-                    content_array = [];
-
-                    explain_array.forEach(element => {
-                        if (element.length > 0) {
-                            item = {};
-                            item["type"] = "text";
-                            if (element.indexOf("]") > 0)
-                                element = "[" + element;
-                            item["text"] = element;
-                            item["size"] = "lg";
-                            item["align"] = "start";
-                            item["wrap"] = true;
-                            content_array.push(item);
-                        }
-                    });
-                    //bubble.body.contents[0].text = word[1].chi ;
-                    bubble.body.contents = content_array;
-
-                    if ("None" == word[1].link)
-                        delete bubble.footer;
-                    else {
-                        bubble.footer.contents[1].action.uri = config.eng.base_url + "/" + word[1].link;
-                        logger.debug (config.eng.base_url + "#" +word[1].link) ;
-
-                    }
-                        
-
-                    response = Object.assign({}, message.flex2.common);
-                    response.contents = bubble;
-
-                    //logger.debug(JSON.stringify(response));
-                    event.reply(response);
-
-                    break;
-                }
-                default: {
-                    if (config.ai.enable) {
-                        line_tools.sendLoadingAnimation (event.source.userId ) ;
-
-                        (async () => {
-                            try {
-                                const res = await fetch(config.ai.url + event.source.userId + "?" + new URLSearchParams({
-                                    ask: text
-                                }).toString());
-
-                                logger.debug(config.ai.url + event.source.userId + "?" + new URLSearchParams({
-                                    ask: text
-                                }).toString())
-
-                                reply = await res.text()
-                                response = Object.assign({}, message.text);
-                                response.text = reply;
-                                logger.debug(reply)
-                                event.reply(response);
-
-                            } catch (err) {
-                                logger.error(err.message); //can be console.error
-                            }
-                        })();
-                    }
-                    else {
-                        response = Object.assign({}, message.text);
-                        response.text = event.message.text;
-                        event.reply(response);
-                    }
-                    //response["quickReply"] = message.quickReply ;
-                    id = event.source.userId;
-                    if (MEMBERS[id])
-                        id = MEMBERS[id]["displayName"]
-                    log_msg = id + " 說 " + event.message.text;
-                    logger.info(log_msg);
-                    if (config.mqtt.enable)
-                        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
-
-
-                    break;
-                }
-            }
-
+        case 'text': {
+            const text = event.message.text;
+            handleTextMessage(event, text);
             break;
         }
-        case "sticker": {
-            response = Object.assign({}, message.sticker);;
-            if (event.message.packageId == "1")
+        case 'sticker': {
+            const response = structuredClone(message.sticker);
+            if (event.message.packageId === '1')
                 response.stickerId = event.message.stickerId;
             event.reply(response);
             break;
         }
-        case "location": {
-            response = Object.assign({}, message.text);;
-            response.text = event.message.address + " (" + event.message.latitude + "," + event.message.longitude + ")";
+        case 'location': {
+            const response = structuredClone(message.text);
+            response.text = event.message.address + ' (' + event.message.latitude + ',' + event.message.longitude + ')';
             event.reply(response);
-            break
+            break;
         }
-        case "image": default: {
-            response = Object.assign({}, message.text);;
+        case 'image':
+        default: {
+            const response = structuredClone(message.text);
             response.text = config.linebot.image_not_support;
             event.reply(response);
             break;
         }
     }
-
- 
 });
 
+/**
+ * 處理文字訊息的路由
+ */
+function handleTextMessage(event, text) {
+    switch (text) {
+        case '(STATUS)': {
+            const response  = structuredClone(message.flex.common);
+            const carousel  = structuredClone(message.flex.container.carousel);
+            response.contents = carousel;
+            const bubble1 = structuredClone(message.flex.container.bubble);
+            const bubble2 = structuredClone(message.flex.container.bubble);
+            bubble1.body.contents[0].text = 'I am bubble 1';
+            bubble2.body.contents[0].text = 'I am bubble 2';
+            carousel.contents = [bubble1, bubble2];
+            logger.debug(JSON.stringify(response));
+            event.reply(response);
+            break;
+        }
+        case '(SINGLE)': {
+            const response = structuredClone(message.flex.common);
+            const bubble   = structuredClone(message.flex.container.bubble);
+            bubble.body.contents[0].text = 'I am bubble 1';
+            response.contents = bubble;
+            logger.debug(JSON.stringify(response));
+            event.reply(response);
+            break;
+        }
+        case '(status)': {
+            event.reply(composer.getStatus());
+            break;
+        }
+        case '(raw)': {
+            event.reply(composer.getRawData());
+            break;
+        }
+        case '麵包 請幫忙開大門': {
+            const response = structuredClone(message.text);
+            response.text  = config.linebot.try_to_open_front_door;
+            event.reply(response);
 
+            // publish 現為 Promise，獨立處理結果不阻塞 reply
+            mqtt_agent.publish(config.mqtt.topic_for_pico, 'OPEN').catch((err) => {
+                logger.error('無法開大門: ' + err.message);
+                const failMsg  = structuredClone(message.text);
+                failMsg.text   = config.linebot.fail_to_open_front_door;
+                event.reply(failMsg);
+            });
+            break;
+        }
+        case '麵包教我單字':
+        case '麵包教我難一點的單字': {
+            const isAdvance = text === '麵包教我難一點的單字';
+            const word      = isAdvance ? vocab_db.randomAdvanceWord() : vocab_db.randomBasicWord();
+            const bubble    = buildWordBubble(word, config.eng.base_url + '/');
+            const response  = structuredClone(message.flex2.common);
+            response.contents = bubble;
+            event.reply(response);
+            break;
+        }
+        default: {
+            if (config.ai.enable) {
+                line_tools.sendLoadingAnimation(event.source.userId);
+
+                (async () => {
+                    try {
+                        const apiUrl = config.ai.url + event.source.userId + '?' + new URLSearchParams({ ask: text }).toString();
+                        logger.debug(apiUrl);
+                        const res    = await fetch(apiUrl);
+                        const reply  = await res.text();
+                        const response = structuredClone(message.text);
+                        response.text  = reply;
+                        logger.debug(reply);
+                        event.reply(response);
+                    } catch (err) {
+                        logger.error(err.message);
+                    }
+                })();
+            } else {
+                const response = structuredClone(message.text);
+                response.text  = text;
+                event.reply(response);
+            }
+
+            logUserMessage(event.source.userId, text);
+            break;
+        }
+    }
+}
+
+/*
+ * 成員事件
+ */
 bot.on('leave', function (event) {
     logger.debug(event);
-    id = event.source.userId;
-    if (MEMBERS[id])
-        id = MEMBERS[id]["displayName"]
-    log_msg = id + " 說 " + " 離開麵包國了 !";
+    const log_msg = getMemberDisplay(event.source.userId) + ' 離開麵包國了 !';
     logger.info(log_msg);
-    mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
+    mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg).catch(err => logger.error(err));
     unregisterMember(event.source.userId);
-
-})
+});
 
 bot.on('join', function (event) {
     logger.debug(event);
     event.source.profile().then(function (profile) {
         registerMember(profile);
-        var msg = config.linebot.welcome_join_string.replace("$USER", profile.displayName);
+        const msg = config.linebot.welcome_join_string.replace('$USER', profile.displayName);
         event.reply(msg);
 
-        id = event.source.userId;
-        if (MEMBERS[id])
-            id = MEMBERS[id]["displayName"]
-        log_msg = id + " 加入麵包國了 !";
-
+        const log_msg = getMemberDisplay(profile.userId) + ' 加入麵包國了 !';
         logger.info(log_msg);
-        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
+        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg).catch(err => logger.error(err));
     });
-})
+});
 
 bot.on('follow', function (event) {
     logger.debug(event);
     event.source.profile().then(function (profile) {
         registerMember(profile);
-        var msg = config.linebot.welcome_string.replace("$USER", profile.displayName);
+        const msg = config.linebot.welcome_string.replace('$USER', profile.displayName);
         event.reply(msg);
 
-        id = event.source.userId;
-        if (MEMBERS[id])
-            id = MEMBERS[id]["displayName"]
-        log_msg = id + " 回到麵包國了 !";
-
+        const log_msg = getMemberDisplay(profile.userId) + ' 回到麵包國了 !';
         logger.info(log_msg);
-        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
+        mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg).catch(err => logger.error(err));
     });
-})
+});
 
 bot.on('unfollow', function (event) {
     logger.debug(event);
-
-    id = event.source.userId;
-    if (MEMBERS[id])
-        id = MEMBERS[id]["displayName"]
-    log_msg = id + " 封鎖麵包國了 !";
-
+    const log_msg = getMemberDisplay(event.source.userId) + ' 封鎖麵包國了 !';
     logger.info(log_msg);
-    mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg);
+    mqtt_agent.publish(config.mqtt.topic_for_homebot, log_msg).catch(err => logger.error(err));
     unregisterMember(event.source.userId);
+});
 
-
-})
-
+/*
+ * 成員管理
+ */
 function registerMember(profile) {
-    var p = {};
-    p["userId"] = profile.userId;
-    p["displayName"] = profile.displayName;
-    p["language"] = profile.language;
-    p["pictureUrl"] = profile.pictureUrl;
-    p["statusMessage"] = profile.statusMessage;
-    MEMBERS[profile.userId] = p;
+    const { userId, displayName, language, pictureUrl, statusMessage } = profile;
+    MEMBERS[userId] = { userId, displayName, language, pictureUrl, statusMessage };
 
-    logger.debug(JSON.stringify(MEMBERS));
-    logger.debug("MEMBERS are: " + Object.keys(MEMBERS));
-
+    logger.debug('MEMBERS: ' + Object.keys(MEMBERS));
     member_manager.writeMemberProfiles(MEMBERS);
-
 }
 
 function unregisterMember(userId) {
     delete MEMBERS[userId];
-    console.log(Object.keys(MEMBERS).length);
-    logger.debug(JSON.stringify(MEMBERS));
+    logger.debug(`Member removed. Remaining: ${Object.keys(MEMBERS).length}`);
 }
-
-setTimeout(function () {
-    var sendMsg = config.linebot.service_is_up_string;
-    if (Object.keys(MEMBERS).length > 0) {
-        //bot.broadcast(sendMsg);
-        logger.info('send: ' + Object.keys(MEMBERS) + ':' + sendMsg);
-    }
-    else {
-        logger.info('No member found');
-    }
-
-}, 3000);
 
 /****************************************************************************
  *    Main Start
  ****************************************************************************/
-MEMBERS = member_manager.loadMemberProfiles()
+MEMBERS = member_manager.loadMemberProfiles();
 
 vocab_db.init();
-/*
-console.log (vocab_db.randomBasicWord()) ;
-console.log (vocab_db.randomAdvanceWord()) ;
-*/
 
 bot.listen('/', config.linebot.port);
 
-logger.info('Running on : ' + config.linebot.port);
+logger.info('Running on port: ' + config.linebot.port);
 
+setTimeout(function () {
+    const sendMsg = config.linebot.service_is_up_string;
+    if (Object.keys(MEMBERS).length > 0) {
+        logger.info('Members online: ' + Object.keys(MEMBERS) + ' — ' + sendMsg);
+    } else {
+        logger.info('No member found');
+    }
+}, 3000);

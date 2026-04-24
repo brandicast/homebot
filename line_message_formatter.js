@@ -9,8 +9,9 @@ var g = require('./globals.js');
 
 let message = require("./lib/line_message_template.js");
 
-function deepClone(json_obj) { // 本來是用 Object.assign ，但會有shallow clone的問題
-    return JSON.parse(JSON.stringify(json_obj));
+// structuredClone() 是 Node.js 17+ 內建，效能優於 JSON.parse/stringify
+function deepClone(obj) {
+    return structuredClone(obj);
 }
 
 function getMessageShell() {

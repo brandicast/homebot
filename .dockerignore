@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+*.md
+node_modules
+logs
+
+# 大型資料庫檔案改用 Volume 掛載
+resources/vocabulary.db
+resources/vocabulary.db:Zone.Identifier

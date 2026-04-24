@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "main": "bot.js",
   "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "better-sqlite3": "^12.9.0",
     "linebot": "^1.6.1",
     "log4js": "^6.3.0",
     "mqtt": "^4.2.8"

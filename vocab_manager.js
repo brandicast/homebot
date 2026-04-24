@@ -1,53 +1,63 @@
+'use strict';
 
-let config = require("./config.js");
-const log4js = require("log4js");
+const config = require('./config.js');
+const log4js  = require('log4js');
 log4js.configure(config.log4js_set);
 const logger = log4js.getLogger(__filename.slice(__dirname.length + 1));
 
-path = require("path") ;
+const path = require('path');
+const Database = require('better-sqlite3');
 
-let util = require ("./lib/util.js")
-
-let ttc_1200 = {} ;
-let ttc_800 = {} ;
-
-let basic_length = 0 ;
-let advance_length = 0 ;
+let db;
 
 exports.init = function () {
-    path_basic = path.join(__dirname, config.eng.resource_folder, config.eng.basic);
-    path_advance = path.join(__dirname, config.eng.resource_folder, config.eng.advance);
-    logger.info ("Loading vocabulary database from  : " + path_basic + " and " + path_advance) ;
+    const dbPath = path.join(__dirname, config.eng.resource_folder, 'vocabulary.db');
+    logger.info('Connecting to vocabulary database at: ' + dbPath);
+    try {
+        db = new Database(dbPath, { readonly: true });
+        logger.info('Database connected successfully.');
+        
+        // 驗證並記錄詞彙數量
+        const stmt = db.prepare('SELECT category, COUNT(*) as count FROM vocabulary GROUP BY category');
+        const rows = stmt.all();
+        const basicCount = rows.find(r => r.category === '101')?.count || 0;
+        const advanceCount = rows.find(r => r.category === '110')?.count || 0;
+        
+        logger.info(`Vocabulary loaded from SQLite — basic: ${basicCount}, advance: ${advanceCount}`);
+    } catch (err) {
+        logger.error('Failed to connect to database: ' + err.message);
+    }
+};
 
-    ttc_1200 = util.loadJSONFileSync(path_basic) ;
-    ttc_800 = util.loadJSONFileSync(path_advance) ;
-
-    if (ttc_1200) 
-        basic_length = Object.keys(ttc_1200).length
-
-    if (ttc_800) 
-        advance_length = Object.keys(ttc_800).length
+function getRandomWordByCategory(categoryPattern) {
+    if (!db) {
+        logger.error('Database not initialized');
+        return ['error', { chi: '資料庫未連接', link: 'None' }];
+    }
     
-    /*
-    console.log (Object.keys(ttc_800).length) ;       // 784
-    console.log (Object.keys(ttc_800)[15]) ;          // air conditioner
-    console.log (Object.entries(ttc_800)[15]) ;       // [ 'air conditioner', { chi: '[名詞] 冷氣機', link: 'None', count: '0' } ]
-    console.log (Object.entries(ttc_800)[15][0]) ;    // air conditioner
-    console.log (ttc_800[Object.keys(ttc_800)[15]]) ;  // { chi: '[名詞] 冷氣機', link: 'None', count: '0' }
-    */
+    try {
+        // SQLite 查詢：從特定 category 中隨機取得一筆
+        const stmt = db.prepare('SELECT word, translation as chi, link, category FROM vocabulary WHERE category = ? ORDER BY RANDOM() LIMIT 1');
+        const row = stmt.get(categoryPattern);
+        
+        if (!row) {
+            return ['error', { chi: '找不到單字', link: 'None', category: '000' }];
+        }
+        
+        // 確保 link 的格式與之前 JSON 的行為一致 (如果是 null 就轉成 'None')
+        const link = (row.link === null || row.link === '') ? 'None' : row.link;
+        
+        return [row.word, { chi: row.chi, link: link, category: row.category }];
+    } catch (err) {
+        logger.error('Error fetching word: ' + err.message);
+        return ['error', { chi: '取得單字發生錯誤', link: 'None', category: '000' }];
+    }
 }
 
 exports.randomBasicWord = function () {
-    var seed = Math.random()  ;
-    seed = Math.round(seed * 10000) % basic_length ;   
-    //logger.debug(seed) ;
-    return Object.entries(ttc_1200)[seed];
-}
+    return getRandomWordByCategory('101');
+};
 
 exports.randomAdvanceWord = function () {
-
-    var seed = Math.random()  ;
-    seed = Math.round(seed * 1000) % advance_length ;   
-    //logger.debug(seed) ;
-    return Object.entries(ttc_800)[seed];
-}
+    return getRandomWordByCategory('110');
+};
